@@ -1,5 +1,5 @@
-import { WebSocketServer } from 'ws';
-import { setUpPlayer, players } from '../in-memory-db.js';
+import { RawData, WebSocketServer } from 'ws';
+import { setUpPlayer, players } from '../in-memory-db';
 
 const wss = new WebSocketServer({ port: 3000 });
 
@@ -7,8 +7,8 @@ wss.on('connection', function connection(ws) {
 
     ws.on('error', console.error);
 
-    ws.on('message', function message(data) {
-        const parsedData = JSON.parse(data);
+    ws.on('message', function message(data: RawData) {
+        const parsedData = JSON.parse(data.toString());
         if (parsedData.type === 'reg') {
             const playerResponse = setUpPlayer(parsedData);
             console.log('players.size', players.size);

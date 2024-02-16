@@ -1,8 +1,8 @@
 
-import { randomUUID } from 'crypto';
+import { UUID, randomUUID } from 'crypto';
 
 export const players = new Map();
-const toPlayerResponse = (index, playerInput) => {
+const toPlayerResponse = (index: UUID, playerInput: any) => {
     const parsedData = JSON.parse(playerInput.data);
     return ({
         ...playerInput,
@@ -13,9 +13,9 @@ const toPlayerResponse = (index, playerInput) => {
         })
     })
 }
-const savePlayer = ({ name, password}, index) => players.set(index, { name, password });
-export const setUpPlayer = (playerInput) => {
+const savePlayer = (data: { name: string, password: string }, index: UUID) => players.set(index, { name: data.name, password: data.password });
+export const setUpPlayer = (playerInput: any) => {
     const index = randomUUID();
     savePlayer(JSON.parse(playerInput.data), index);
-    return toPlayerResponse(index, playerInput)
+    return toPlayerResponse(index, playerInput);
 }
