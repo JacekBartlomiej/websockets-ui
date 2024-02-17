@@ -1,4 +1,5 @@
 import { httpServer } from "./src/http_server/index";
+//TODO: remove file from folder, folder is not needed
 import './src/websocket/websocket';
 
 const HTTP_PORT = 8181;

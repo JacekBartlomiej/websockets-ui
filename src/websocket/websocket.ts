@@ -1,4 +1,5 @@
 import { RawData, WebSocketServer } from 'ws';
+//TODO: change the name of file to players
 import { setUpPlayer, players } from '../in-memory-db';
 
 const wss = new WebSocketServer({ port: 3000 });
