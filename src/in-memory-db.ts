@@ -8,7 +8,6 @@ const toPlayerResponse = (index: UUID, playerInput: any) => {
         ...playerInput,
         data: JSON.stringify({
             name: parsedData.name,
-            password: parsedData.password,
             index
         })
     })
