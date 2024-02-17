@@ -18,7 +18,7 @@ const toPlayerResponse = (index: UUID, playerInput: any) => {
 const savePlayer = (data: { name: string, password: string }, index: UUID): Map<UUID, PlayerBase> => players.set(index, { name: data.name, password: data.password });
 
 //TODO: add response type
-export const setUpPlayer = (playerInput: any, index: UUID) => {
+export const toReg = (playerInput: any, index: UUID) => {
     savePlayer(JSON.parse(playerInput.data), index);
     return toPlayerResponse(index, playerInput);
 }
