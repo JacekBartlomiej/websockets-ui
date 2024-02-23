@@ -1,6 +1,7 @@
 import { players } from "./in-memory-db";
 import { TYPE } from "./models/command-types";
-import { RoomUser, UpdateRoom } from "./models/rooms.model";
+import { Response } from "./models/response.model";
+import { AddUserToRoomData, Room, RoomUser } from "./models/rooms.model";
 import { UUID, randomUUID } from "crypto";
 
 const rooms: Map<UUID, RoomUser[]> = new Map();
@@ -9,10 +10,10 @@ export const toUpdateRooms = (): string => {
   return JSON.stringify({
     type: TYPE.UPDATE_ROOM,
     data: JSON.stringify(
-      Array.from(rooms, ([uuid, users]) => ({ uuid, roomUsers: users }))
+      Array.from(rooms, ([uuid, users]) => ({ roomId: uuid, roomUsers: users } as Room))
     ),
     id: 0,
-  } as UpdateRoom);
+  } as Response);
 };
 
 export const createRoom = (): UUID => {
@@ -32,3 +33,7 @@ export const addUserToRoom = (roomId: UUID, userId: UUID): void => {
     }
   }
 };
+
+export const toRoomId = (data: string): UUID => {
+  return (JSON.parse(data) as AddUserToRoomData).indexRoom;
+}

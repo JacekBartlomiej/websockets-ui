@@ -1,6 +1,5 @@
 import { UUID } from "crypto";
 import { TYPE } from "./command-types";
-import { Player } from "./players.model";
 
 export interface RoomUser {
   name: string;
@@ -12,8 +11,6 @@ export interface Room {
   roomUsers: RoomUser[];
 }
 
-export interface UpdateRoom {
-  type: TYPE.UPDATE_ROOM;
-  data: string;
-  id: 0;
+export interface AddUserToRoomData {
+  indexRoom: UUID
 }
