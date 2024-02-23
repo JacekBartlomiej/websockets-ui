@@ -6,11 +6,16 @@ export interface RoomUser {
   index: UUID;
 }
 
-export interface Room {
+export interface UpdateRoom {
   roomId: UUID;
   roomUsers: RoomUser[];
 }
 
-export interface AddUserToRoomData {
+export interface AddUserToRoom {
   indexRoom: UUID
+}
+
+export interface CreateGame {
+  idGame: UUID,
+  idPlayer: UUID
 }

@@ -1,16 +1,24 @@
 import { players } from "./in-memory-db";
 import { TYPE } from "./models/command-types";
 import { Response } from "./models/response.model";
-import { AddUserToRoomData, Room, RoomUser } from "./models/rooms.model";
+import {
+  AddUserToRoom,
+  UpdateRoom,
+  RoomUser,
+  CreateGame,
+} from "./models/rooms.model";
 import { UUID, randomUUID } from "crypto";
 
-const rooms: Map<UUID, RoomUser[]> = new Map();
+export const rooms: Map<UUID, RoomUser[]> = new Map();
 
 export const toUpdateRooms = (): string => {
   return JSON.stringify({
     type: TYPE.UPDATE_ROOM,
     data: JSON.stringify(
-      Array.from(rooms, ([uuid, users]) => ({ roomId: uuid, roomUsers: users } as Room))
+      Array.from(
+        rooms,
+        ([uuid, users]) => ({ roomId: uuid, roomUsers: users } as UpdateRoom)
+      )
     ),
     id: 0,
   } as Response);
@@ -35,5 +43,13 @@ export const addUserToRoom = (roomId: UUID, userId: UUID): void => {
 };
 
 export const toRoomId = (data: string): UUID => {
-  return (JSON.parse(data) as AddUserToRoomData).indexRoom;
-}
+  return (JSON.parse(data) as AddUserToRoom).indexRoom;
+};
+
+//TODO: create one method where you use type and data
+export const toCreateGame = (playerId: UUID): CreateGame => {
+  return {
+    idPlayer: playerId,
+    idGame: randomUUID(),
+  };
+};
