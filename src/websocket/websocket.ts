@@ -6,9 +6,16 @@ import { TYPE } from "../models/command-types";
 import {
   addUserToRoom,
   createRoom,
+  games,
   rooms,
+  saveGame,
+  saveShips,
+  ships,
   toCreateGame,
+  toGameId,
   toRoomId,
+  toShips,
+  toStartGame,
   toUpdateRooms,
 } from "../rooms";
 import { Response } from "../models/response.model";
@@ -47,11 +54,35 @@ wss.on("connection", function connection(ws) {
         const updateRooms = toUpdateRooms();
         ws.send(updateRooms);
         if (roomUsers.length === 2) {
-          const createGame = toRequest(TYPE.CREATE_GAME, toCreateGame(userId));
+          const gameId = randomUUID();
+          const createGame = toRequest(
+            TYPE.CREATE_GAME,
+            toCreateGame(userId, gameId)
+          );
+          saveGame(
+            gameId,
+            roomUsers.map((roomUser) => roomUser.index) as [UUID, UUID]
+          );
           roomUsers.forEach(({ index }) => connections[index].send(createGame));
         }
       } else {
         console.error("There can be maximum 2 players in one room");
+      }
+    }
+    if (parsedData.type === TYPE.ADD_SHIPS) {
+      const gameId = toGameId(parsedData.data);
+      const playerShips = toShips(parsedData.data);
+      saveShips(gameId, userId, playerShips);
+      if (ships.get(gameId)?.size === 2) {
+        const players: [UUID, UUID] = games.get(gameId)!;
+        players.forEach((playerId) => {
+          const playerShips = ships.get(gameId)?.get(playerId)!;
+          const startGame = toRequest(
+            TYPE.START_GAME,
+            toStartGame(userId, playerShips)
+          );
+          connections[playerId].send(startGame);
+        });
       }
     }
   });

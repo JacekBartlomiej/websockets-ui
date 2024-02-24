@@ -6,10 +6,15 @@ import {
   UpdateRoom,
   RoomUser,
   CreateGame,
+  AddShips,
+  Ship,
+  StartGame,
 } from "./models/rooms.model";
 import { UUID, randomUUID } from "crypto";
 
 export const rooms: Map<UUID, RoomUser[]> = new Map();
+export const games: Map<UUID, [UUID, UUID]> = new Map();
+export const ships: Map<UUID, Map<UUID, Ship[]>> = new Map();
 
 export const toUpdateRooms = (): string => {
   return JSON.stringify({
@@ -47,9 +52,41 @@ export const toRoomId = (data: string): UUID => {
 };
 
 //TODO: create one method where you use type and data
-export const toCreateGame = (playerId: UUID): CreateGame => {
+export const toCreateGame = (playerId: UUID, gameId: UUID): CreateGame => {
   return {
     idPlayer: playerId,
-    idGame: randomUUID(),
+    idGame: gameId,
   };
 };
+
+export const saveGame = (gameId: UUID, players: [UUID, UUID]): void => {
+  games.set(gameId, players);
+};
+
+export const toGameId = (data: string): UUID => {
+  return (JSON.parse(data) as AddShips).gameId;
+};
+
+export const saveShips = (
+  gameId: UUID,
+  playerId: UUID,
+  playerShips: Ship[]
+): void => {
+  let gameMap = ships.get(gameId);
+  if (!gameMap) {
+    gameMap = new Map();
+    ships.set(gameId, gameMap);
+  }
+  gameMap.set(playerId, playerShips);
+};
+
+export const toShips = (data: string): Ship[] => {
+  return (JSON.parse(data) as AddShips).ships;
+}
+
+export const toStartGame = (playerId: UUID, ships: Ship[]): StartGame => {
+  return {
+    ships,
+    currentPlayerIndex: playerId
+  }
+}
