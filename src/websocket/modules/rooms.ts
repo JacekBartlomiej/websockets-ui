@@ -1,6 +1,6 @@
-import { players } from "./in-memory-db";
-import { TYPE } from "./models/command-types";
-import { Response } from "./models/response.model";
+import { players } from "./player";
+import { TYPE } from "../models/command-types";
+import { Response } from "../models/response.model";
 import {
   AddUserToRoom,
   UpdateRoom,
@@ -9,7 +9,7 @@ import {
   AddShips,
   Ship,
   StartGame,
-} from "./models/rooms.model";
+} from "../models/rooms.model";
 import { UUID, randomUUID } from "crypto";
 
 export const rooms: Map<UUID, RoomUser[]> = new Map();

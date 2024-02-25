@@ -1,6 +1,6 @@
 
 import { UUID } from 'crypto';
-import { PlayerBase } from './models/players.model';
+import { PlayerBase } from '../models/players.model';
 
 export const players: Map<UUID, PlayerBase> = new Map();
 //TODO: add response type

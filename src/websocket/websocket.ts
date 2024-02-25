@@ -1,8 +1,8 @@
 import { RawData, WebSocket, WebSocketServer } from "ws";
 //TODO: change the name of file to players
-import { toReg, players } from "../in-memory-db";
+import { toReg, players } from "./modules/player";
 import { UUID, randomUUID } from "crypto";
-import { TYPE } from "../models/command-types";
+import { TYPE } from "./models/command-types";
 import {
   addUserToRoom,
   createRoom,
@@ -17,10 +17,28 @@ import {
   toShips,
   toStartGame,
   toUpdateRooms,
-} from "../rooms";
-import { Response } from "../models/response.model";
-import { toRequest } from "../request";
-import { RoomUser } from "../models/rooms.model";
+} from "./modules/rooms";
+import { Response } from "./models/response.model";
+import { toRequest } from "./modules/request";
+import { RoomUser } from "./models/rooms.model";
+import { ATTACK_STATUS, Attack, RandomAttack } from "./models/game.model";
+import {
+  allShipsKilled,
+  cellWasNotAttacked,
+  gamesTurn,
+  randomAttackToAttack,
+  saveGameProgress,
+  setUpGameFields,
+  switchGameTurn,
+  toAllCellsAroundShipCoordinates,
+  toAttack,
+  toAttackFeedback,
+  toFinish,
+  toRandomCoordinate,
+  toTurn,
+  updateGameField,
+  updateGameProgress,
+} from "./modules/game";
 
 const wss = new WebSocketServer({ port: 3000 });
 
@@ -46,6 +64,12 @@ wss.on("connection", function connection(ws) {
     if (parsedData.type === TYPE.ADD_SHIPS) {
       handleAddShips(ws, parsedData, userId);
     }
+    if (parsedData.type === TYPE.ATTACK) {
+      handleAttack(parsedData, userId);
+    }
+    if (parsedData.type === TYPE.RANDOM_ATTACK) {
+      handleRandomAttack(parsedData, userId);
+    }
   });
 });
 
@@ -60,7 +84,11 @@ const handleCreateRoom = (ws: WebSocket, userId: UUID): void => {
   const roomId = createRoom();
   addUserToRoom(roomId, userId);
   const updateRooms = toUpdateRooms();
-  ws.send(updateRooms);
+  const users: UUID[] = Object.keys(connections) as UUID[];
+  users.forEach((index) => {
+    console.log("index", index);
+    connections[index].send(updateRooms);
+  });
 };
 
 const handleAddUserToRoom = (
@@ -76,15 +104,21 @@ const handleAddUserToRoom = (
     ws.send(updateRooms);
     if (roomUsers.length === 2) {
       const gameId = randomUUID();
-      const createGame = toRequest(
-        TYPE.CREATE_GAME,
-        toCreateGame(userId, gameId)
-      );
       saveGame(
         gameId,
         roomUsers.map((roomUser) => roomUser.index) as [UUID, UUID]
       );
-      roomUsers.forEach(({ index }) => connections[index].send(createGame));
+      setUpGameFields(
+        gameId,
+        roomUsers.map((roomUser) => roomUser.index) as [UUID, UUID]
+      );
+      roomUsers.forEach(({ index }) => {
+        const createGame = toRequest(
+          TYPE.CREATE_GAME,
+          toCreateGame(index, gameId)
+        );
+        connections[index].send(createGame);
+      });
     }
   } else {
     console.error("There can be maximum 2 players in one room");
@@ -95,8 +129,10 @@ const handleAddShips = (ws: WebSocket, parsedData: Response, userId: UUID) => {
   const gameId = toGameId(parsedData.data);
   const playerShips = toShips(parsedData.data);
   saveShips(gameId, userId, playerShips);
+  saveGameProgress(gameId, ships);
   if (ships.get(gameId)?.size === 2) {
     const players: [UUID, UUID] = games.get(gameId)!;
+    switchGameTurn(gameId, userId);
     players.forEach((playerId) => {
       const playerShips = ships.get(gameId)?.get(playerId)!;
       const startGame = toRequest(
@@ -104,6 +140,71 @@ const handleAddShips = (ws: WebSocket, parsedData: Response, userId: UUID) => {
         toStartGame(playerId, playerShips)
       );
       connections[playerId].send(startGame);
+      const turn = toRequest(TYPE.TURN, toTurn(userId));
+      connections[playerId].send(turn);
     });
   }
+};
+
+const handleAttack = (parsedData: Response, userId: UUID) => {
+  console.log("from handleAttack 1");
+  const gameId = toGameId(parsedData.data);
+  if (gamesTurn.get(gameId) === userId) {
+    console.log("from handleAttack 2");
+    const attack = toAttack(parsedData.data);
+    const players: [UUID, UUID] = games.get(attack.gameId)!;
+    const otherPlayerId = players.find(
+      (playerId) => playerId !== attack.indexPlayer
+    )!;
+    if (cellWasNotAttacked(parsedData.data, otherPlayerId)) {
+      console.log("from handleAttack 3");
+      updateGameField(gameId, otherPlayerId, { x: attack.x, y: attack.y });
+      const attackStatus = updateGameProgress(attack);
+
+      players.forEach((playerId) => {
+        const attackFeedback = toRequest(
+          TYPE.ATTACK,
+          toAttackFeedback(attack, attackStatus)
+        );
+        connections[playerId].send(attackFeedback);
+        if (attackStatus === ATTACK_STATUS.KILLED) {
+          const allCellsAroundShipCoordinates =
+            toAllCellsAroundShipCoordinates(attack);
+          allCellsAroundShipCoordinates.forEach((coordinate) => {
+            updateGameField(gameId, otherPlayerId, coordinate);
+            const attackFeedback = toRequest(
+              TYPE.ATTACK,
+              toAttackFeedback(
+                { ...attack, x: coordinate.x, y: coordinate.y },
+                ATTACK_STATUS.MISS
+              )
+            );
+            connections[playerId].send(attackFeedback);
+          });
+          if (allShipsKilled(gameId, otherPlayerId)) {
+            const finish = toRequest(TYPE.FINISH, toFinish(userId));
+            connections[playerId].send(finish);
+            return;
+          }
+        }
+        const currendPlayerMissed = attackStatus === ATTACK_STATUS.MISS;
+        const nextPlayer = currendPlayerMissed
+          ? otherPlayerId
+          : attack.indexPlayer;
+        switchGameTurn(attack.gameId, nextPlayer);
+        const turn = toRequest(TYPE.TURN, toTurn(nextPlayer));
+        connections[playerId].send(turn);
+      });
+    }
+  }
+};
+
+const handleRandomAttack = (parsedData: Response, userId: UUID) => {
+  const gameId = toGameId(parsedData.data);
+  const players: [UUID, UUID] = games.get(gameId)!;
+  const otherPlayerId = players.find((playerId) => playerId !== userId)!;
+  const randomCoordinate = toRandomCoordinate(gameId, otherPlayerId);
+  const newData = randomAttackToAttack(parsedData, randomCoordinate);
+  console.log("newData", newData);
+  handleAttack(newData, userId);
 };
