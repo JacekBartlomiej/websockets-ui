@@ -23,6 +23,7 @@ import { toRequest } from "./modules/request";
 import { RoomUser } from "./models/rooms.model";
 import { ATTACK_STATUS, Attack, RandomAttack } from "./models/game.model";
 import {
+  DoubleSender,
   allShipsKilled,
   cellWasNotAttacked,
   gamesTurn,
@@ -36,8 +37,10 @@ import {
   toFinish,
   toRandomCoordinate,
   toTurn,
+  toUpdateWinners,
   updateGameField,
   updateGameProgress,
+  updateWinnersList,
 } from "./modules/game";
 
 const wss = new WebSocketServer({ port: 3000 });
@@ -153,6 +156,7 @@ const handleAttack = (parsedData: Response, userId: UUID) => {
     console.log("from handleAttack 2");
     const attack = toAttack(parsedData.data);
     const players: [UUID, UUID] = games.get(attack.gameId)!;
+    const doubleSender: DoubleSender = new DoubleSender(connections, players);
     const otherPlayerId = players.find(
       (playerId) => playerId !== attack.indexPlayer
     )!;
@@ -160,41 +164,44 @@ const handleAttack = (parsedData: Response, userId: UUID) => {
       console.log("from handleAttack 3");
       updateGameField(gameId, otherPlayerId, { x: attack.x, y: attack.y });
       const attackStatus = updateGameProgress(attack);
-
-      players.forEach((playerId) => {
-        const attackFeedback = toRequest(
-          TYPE.ATTACK,
-          toAttackFeedback(attack, attackStatus)
-        );
-        connections[playerId].send(attackFeedback);
-        if (attackStatus === ATTACK_STATUS.KILLED) {
-          const allCellsAroundShipCoordinates =
-            toAllCellsAroundShipCoordinates(attack);
-          allCellsAroundShipCoordinates.forEach((coordinate) => {
-            updateGameField(gameId, otherPlayerId, coordinate);
-            const attackFeedback = toRequest(
-              TYPE.ATTACK,
-              toAttackFeedback(
-                { ...attack, x: coordinate.x, y: coordinate.y },
-                ATTACK_STATUS.MISS
-              )
-            );
-            connections[playerId].send(attackFeedback);
-          });
-          if (allShipsKilled(gameId, otherPlayerId)) {
-            const finish = toRequest(TYPE.FINISH, toFinish(userId));
-            connections[playerId].send(finish);
-            return;
-          }
+      const attackFeedback = toRequest(
+        TYPE.ATTACK,
+        toAttackFeedback(attack, attackStatus)
+      );
+      doubleSender.send(attackFeedback);
+      if (attackStatus === ATTACK_STATUS.KILLED) {
+        const allCellsAroundShipCoordinates =
+          toAllCellsAroundShipCoordinates(attack);
+        allCellsAroundShipCoordinates.forEach((coordinate) => {
+          updateGameField(gameId, otherPlayerId, coordinate);
+          const attackFeedback = toRequest(
+            TYPE.ATTACK,
+            toAttackFeedback(
+              { ...attack, x: coordinate.x, y: coordinate.y },
+              ATTACK_STATUS.MISS
+            )
+          );
+          doubleSender.send(attackFeedback);
+        });
+        if (allShipsKilled(gameId, otherPlayerId)) {
+          const finish = toRequest(TYPE.FINISH, toFinish(userId));
+          doubleSender.send(finish);
+          updateWinnersList(userId);
+          const updateWinners = toRequest(
+            TYPE.UPDATE_WINNERS,
+            toUpdateWinners()
+          );
+          doubleSender.send(updateWinners);
+          return;
         }
-        const currendPlayerMissed = attackStatus === ATTACK_STATUS.MISS;
-        const nextPlayer = currendPlayerMissed
-          ? otherPlayerId
-          : attack.indexPlayer;
-        switchGameTurn(attack.gameId, nextPlayer);
-        const turn = toRequest(TYPE.TURN, toTurn(nextPlayer));
-        connections[playerId].send(turn);
-      });
+      }
+      const currendPlayerMissed = attackStatus === ATTACK_STATUS.MISS;
+      const nextPlayer = currendPlayerMissed
+        ? otherPlayerId
+        : attack.indexPlayer;
+      switchGameTurn(attack.gameId, nextPlayer);
+      const turn = toRequest(TYPE.TURN, toTurn(nextPlayer));
+      doubleSender.send(turn);
     }
   }
 };

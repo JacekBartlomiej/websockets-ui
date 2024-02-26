@@ -8,10 +8,13 @@ import {
   Finish,
   RandomAttack,
   Turn,
+  UpdateWinner,
 } from "../models/game.model";
 import { Ship } from "../models/rooms.model";
 import { toGameId } from "./rooms";
 import { Response } from "../models/response.model";
+import { players } from "./player";
+import { WebSocket } from "ws";
 
 export const gamesProgress: Map<
   UUID,
@@ -22,6 +25,7 @@ export const gamesAvailableCells: Map<
   UUID,
   Map<UUID, Coordinate[]>
 > = new Map();
+export const winnersList: Map<UUID, { name: string; wins: number }> = new Map();
 
 export const switchGameTurn = (gameId: UUID, playerId: UUID): void => {
   gamesTurn.set(gameId, playerId);
@@ -311,7 +315,10 @@ export const randomAttackToAttack = (
   return parsedData;
 };
 
-export const cellWasNotAttacked = (data: string, otherPlayerId: UUID): boolean => {
+export const cellWasNotAttacked = (
+  data: string,
+  otherPlayerId: UUID
+): boolean => {
   const { gameId, x, y } = JSON.parse(data) as Attack;
   const gameField = gamesAvailableCells.get(gameId)?.get(otherPlayerId)!;
   return gameField.some((cell) => cell.x === x && cell.y === y);
@@ -330,3 +337,44 @@ export const allShipsKilled = (gameId: UUID, otherPlayerId: UUID): boolean => {
     .flat()
     .every((coordinateStatus) => coordinateStatus.shot);
 };
+
+export const updateWinnersList = (userId: UUID): void => {
+  const prevUserRecord = winnersList.get(userId);
+  if (prevUserRecord) {
+    const newRecord = {
+      name: prevUserRecord.name,
+      wins: prevUserRecord.wins + 1,
+    };
+    winnersList.set(userId, newRecord);
+  } else {
+    const playerName = players.get(userId)?.name!;
+    winnersList.set(userId, { name: playerName, wins: 1 });
+  }
+};
+
+export const toUpdateWinners = (): UpdateWinner[] => {
+  return Array.from(winnersList).map(([UUID, updateWinner]) => updateWinner);
+};
+
+export const sendToBothPlayers = (
+  connections: { [id: UUID]: WebSocket },
+  players: [UUID, UUID],
+  message: any
+): void => {
+  players.forEach((playerId) => {
+    connections[playerId].send(message);
+  });
+};
+
+export class DoubleSender {
+  constructor(
+    private connections: { [id: UUID]: WebSocket },
+    private players: [UUID, UUID]
+  ) {}
+
+  send(message: any) {
+    this.players.forEach((playerId) => {
+      this.connections[playerId].send(message);
+    });
+  }
+}

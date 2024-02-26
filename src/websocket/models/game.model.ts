@@ -36,5 +36,10 @@ export interface RandomAttack {
 }
 
 export interface Finish {
-  winPlayer: UUID
+  winPlayer: UUID;
+}
+
+export interface UpdateWinner {
+  name: string;
+  wins: number;
 }
