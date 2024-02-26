@@ -25,7 +25,8 @@ import { toRequest } from "./modules/request";
 import { RoomUser } from "./models/rooms.model";
 import { ATTACK_STATUS, Attack, RandomAttack } from "./models/game.model";
 import {
-  DoubleSender,
+  AllUsersSender,
+  PlayersSender,
   allShipsKilled,
   cellWasNotAttacked,
   gamesTurn,
@@ -48,6 +49,8 @@ import {
 const wss = new WebSocketServer({ port: 3000 });
 
 const connections: { [id: UUID]: WebSocket } = {};
+
+const allUsersSender = new AllUsersSender(connections);
 
 wss.on("connection", function connection(ws) {
   const userId = randomUUID();
@@ -82,18 +85,18 @@ const handleReg = (ws: WebSocket, parsedData: Response, userId: UUID): void => {
   const reg = toReg(parsedData, userId);
   ws.send(JSON.stringify(reg));
   const updateRooms = toUpdateRooms();
-  ws.send(updateRooms);
+  const updateWinners = toRequest(TYPE.UPDATE_WINNERS, toUpdateWinners());
+  allUsersSender.send(updateRooms);
+  allUsersSender.send(updateWinners);
 };
 
 const handleCreateRoom = (ws: WebSocket, userId: UUID): void => {
   const roomId = createRoom();
   addUserToRoom(roomId, userId);
   const updateRooms = toUpdateRooms();
-  const users: UUID[] = Object.keys(connections) as UUID[];
-  users.forEach((index) => {
-    console.log("index", index);
-    connections[index].send(updateRooms);
-  });
+  const updateWinners = toRequest(TYPE.UPDATE_WINNERS, toUpdateWinners());
+  allUsersSender.send(updateRooms);
+  allUsersSender.send(updateWinners);
 };
 
 const handleAddUserToRoom = (
@@ -106,10 +109,7 @@ const handleAddUserToRoom = (
   if (roomUsers.length < 2) {
     addUserToRoom(roomId, userId);
     const updateRooms = toUpdateRooms();
-    const users: UUID[] = Object.keys(connections) as UUID[];
-    users.forEach((index) => {
-      connections[index].send(updateRooms);
-    });
+    allUsersSender.send(updateRooms);
     if (roomUsers.length === 2) {
       const gameId = randomUUID();
       saveGame(
@@ -160,7 +160,10 @@ const handleAttack = (parsedData: Response, userId: UUID) => {
   if (gamesTurn.get(gameId) === userId) {
     const attack = toAttack(parsedData.data);
     const players: [UUID, UUID] = games.get(attack.gameId)!;
-    const doubleSender: DoubleSender = new DoubleSender(connections, players);
+    const playersSender: PlayersSender = new PlayersSender(
+      connections,
+      players
+    );
     const otherPlayerId = players.find(
       (playerId) => playerId !== attack.indexPlayer
     )!;
@@ -171,9 +174,9 @@ const handleAttack = (parsedData: Response, userId: UUID) => {
         TYPE.ATTACK,
         toAttackFeedback(attack, attackStatus)
       );
-      doubleSender.send(attackFeedback);
+      playersSender.send(attackFeedback);
       if (attackStatus === ATTACK_STATUS.KILLED) {
-        handleKilled(gameId, otherPlayerId, attack, doubleSender, userId);
+        handleKilled(gameId, otherPlayerId, attack, playersSender, userId);
       }
       const currendPlayerMissed = attackStatus === ATTACK_STATUS.MISS;
       const nextPlayer = currendPlayerMissed
@@ -181,7 +184,7 @@ const handleAttack = (parsedData: Response, userId: UUID) => {
         : attack.indexPlayer;
       switchGameTurn(attack.gameId, nextPlayer);
       const turn = toRequest(TYPE.TURN, toTurn(nextPlayer));
-      doubleSender.send(turn);
+      playersSender.send(turn);
     }
   }
 };
@@ -197,25 +200,25 @@ const handleRandomAttack = (parsedData: Response, userId: UUID) => {
 };
 
 const handleEndGame = (
-  doubleSender: DoubleSender,
+  playersSender: PlayersSender,
   userId: UUID,
   gameId: UUID
 ) => {
   const finish = toRequest(TYPE.FINISH, toFinish(userId));
-  doubleSender.send(finish);
+  playersSender.send(finish);
   updateWinnersList(userId);
   const updateWinners = toRequest(TYPE.UPDATE_WINNERS, toUpdateWinners());
-  doubleSender.send(updateWinners);
+  allUsersSender.send(updateWinners);
   updateRoomsList(gameId);
   const updateRooms = toUpdateRooms();
-  doubleSender.send(updateRooms);
+  allUsersSender.send(updateRooms);
 };
 
 const handleKilled = (
   gameId: UUID,
   otherPlayerId: UUID,
   attack: Attack,
-  doubleSender: DoubleSender,
+  playersSender: PlayersSender,
   userId: UUID
 ) => {
   const allCellsAroundShipCoordinates = toAllCellsAroundShipCoordinates(attack);
@@ -228,10 +231,10 @@ const handleKilled = (
         ATTACK_STATUS.MISS
       )
     );
-    doubleSender.send(attackFeedback);
+    playersSender.send(attackFeedback);
   });
   if (allShipsKilled(gameId, otherPlayerId)) {
-    handleEndGame(doubleSender, userId, gameId);
+    handleEndGame(playersSender, userId, gameId);
     return;
   }
 };

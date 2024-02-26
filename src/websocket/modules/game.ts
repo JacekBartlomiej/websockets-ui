@@ -366,7 +366,7 @@ export const sendToBothPlayers = (
   });
 };
 
-export class DoubleSender {
+export class PlayersSender {
   constructor(
     private connections: { [id: UUID]: WebSocket },
     private players: [UUID, UUID]
@@ -375,6 +375,16 @@ export class DoubleSender {
   send(message: any) {
     this.players.forEach((playerId) => {
       this.connections[playerId].send(message);
+    });
+  }
+}
+
+export class AllUsersSender {
+  constructor(private connections: { [id: UUID]: WebSocket }) {}
+
+  send(message: any) {
+    Object.values(this.connections).forEach((ws) => {
+      ws.send(message);
     });
   }
 }
