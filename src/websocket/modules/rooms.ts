@@ -15,6 +15,18 @@ import { UUID, randomUUID } from "crypto";
 export const rooms: Map<UUID, RoomUser[]> = new Map();
 export const games: Map<UUID, [UUID, UUID]> = new Map();
 export const ships: Map<UUID, Map<UUID, Ship[]>> = new Map();
+export const gamesPerRooms: Map<UUID, UUID> = new Map();
+
+export const setGamesPerRooms = (roomId: UUID, gameId: UUID): void => {
+  gamesPerRooms.set(gameId, roomId);
+}
+
+export const updateRoomsList = (gameId: UUID): void => {
+  const roomId = gamesPerRooms.get(gameId)!;
+  gamesPerRooms.delete(gameId);
+  rooms.delete(roomId);
+}
+
 
 export const toUpdateRooms = (): string => {
   return JSON.stringify({

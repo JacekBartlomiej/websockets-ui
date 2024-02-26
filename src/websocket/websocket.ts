@@ -10,6 +10,7 @@ import {
   rooms,
   saveGame,
   saveShips,
+  setGamesPerRooms,
   ships,
   toCreateGame,
   toGameId,
@@ -17,6 +18,7 @@ import {
   toShips,
   toStartGame,
   toUpdateRooms,
+  updateRoomsList,
 } from "./modules/rooms";
 import { Response } from "./models/response.model";
 import { toRequest } from "./modules/request";
@@ -104,7 +106,10 @@ const handleAddUserToRoom = (
   if (roomUsers.length < 2) {
     addUserToRoom(roomId, userId);
     const updateRooms = toUpdateRooms();
-    ws.send(updateRooms);
+    const users: UUID[] = Object.keys(connections) as UUID[];
+    users.forEach((index) => {
+      connections[index].send(updateRooms);
+    });
     if (roomUsers.length === 2) {
       const gameId = randomUUID();
       saveGame(
@@ -115,6 +120,7 @@ const handleAddUserToRoom = (
         gameId,
         roomUsers.map((roomUser) => roomUser.index) as [UUID, UUID]
       );
+      setGamesPerRooms(roomId, gameId);
       roomUsers.forEach(({ index }) => {
         const createGame = toRequest(
           TYPE.CREATE_GAME,
@@ -150,10 +156,8 @@ const handleAddShips = (ws: WebSocket, parsedData: Response, userId: UUID) => {
 };
 
 const handleAttack = (parsedData: Response, userId: UUID) => {
-  console.log("from handleAttack 1");
   const gameId = toGameId(parsedData.data);
   if (gamesTurn.get(gameId) === userId) {
-    console.log("from handleAttack 2");
     const attack = toAttack(parsedData.data);
     const players: [UUID, UUID] = games.get(attack.gameId)!;
     const doubleSender: DoubleSender = new DoubleSender(connections, players);
@@ -161,7 +165,6 @@ const handleAttack = (parsedData: Response, userId: UUID) => {
       (playerId) => playerId !== attack.indexPlayer
     )!;
     if (cellWasNotAttacked(parsedData.data, otherPlayerId)) {
-      console.log("from handleAttack 3");
       updateGameField(gameId, otherPlayerId, { x: attack.x, y: attack.y });
       const attackStatus = updateGameProgress(attack);
       const attackFeedback = toRequest(
@@ -170,30 +173,7 @@ const handleAttack = (parsedData: Response, userId: UUID) => {
       );
       doubleSender.send(attackFeedback);
       if (attackStatus === ATTACK_STATUS.KILLED) {
-        const allCellsAroundShipCoordinates =
-          toAllCellsAroundShipCoordinates(attack);
-        allCellsAroundShipCoordinates.forEach((coordinate) => {
-          updateGameField(gameId, otherPlayerId, coordinate);
-          const attackFeedback = toRequest(
-            TYPE.ATTACK,
-            toAttackFeedback(
-              { ...attack, x: coordinate.x, y: coordinate.y },
-              ATTACK_STATUS.MISS
-            )
-          );
-          doubleSender.send(attackFeedback);
-        });
-        if (allShipsKilled(gameId, otherPlayerId)) {
-          const finish = toRequest(TYPE.FINISH, toFinish(userId));
-          doubleSender.send(finish);
-          updateWinnersList(userId);
-          const updateWinners = toRequest(
-            TYPE.UPDATE_WINNERS,
-            toUpdateWinners()
-          );
-          doubleSender.send(updateWinners);
-          return;
-        }
+        handleKilled(gameId, otherPlayerId, attack, doubleSender, userId);
       }
       const currendPlayerMissed = attackStatus === ATTACK_STATUS.MISS;
       const nextPlayer = currendPlayerMissed
@@ -214,4 +194,44 @@ const handleRandomAttack = (parsedData: Response, userId: UUID) => {
   const newData = randomAttackToAttack(parsedData, randomCoordinate);
   console.log("newData", newData);
   handleAttack(newData, userId);
+};
+
+const handleEndGame = (
+  doubleSender: DoubleSender,
+  userId: UUID,
+  gameId: UUID
+) => {
+  const finish = toRequest(TYPE.FINISH, toFinish(userId));
+  doubleSender.send(finish);
+  updateWinnersList(userId);
+  const updateWinners = toRequest(TYPE.UPDATE_WINNERS, toUpdateWinners());
+  doubleSender.send(updateWinners);
+  updateRoomsList(gameId);
+  const updateRooms = toUpdateRooms();
+  doubleSender.send(updateRooms);
+};
+
+const handleKilled = (
+  gameId: UUID,
+  otherPlayerId: UUID,
+  attack: Attack,
+  doubleSender: DoubleSender,
+  userId: UUID
+) => {
+  const allCellsAroundShipCoordinates = toAllCellsAroundShipCoordinates(attack);
+  allCellsAroundShipCoordinates.forEach((coordinate) => {
+    updateGameField(gameId, otherPlayerId, coordinate);
+    const attackFeedback = toRequest(
+      TYPE.ATTACK,
+      toAttackFeedback(
+        { ...attack, x: coordinate.x, y: coordinate.y },
+        ATTACK_STATUS.MISS
+      )
+    );
+    doubleSender.send(attackFeedback);
+  });
+  if (allShipsKilled(gameId, otherPlayerId)) {
+    handleEndGame(doubleSender, userId, gameId);
+    return;
+  }
 };
